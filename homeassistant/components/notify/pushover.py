@@ -18,8 +18,10 @@ REQUIREMENTS = ['python-pushover==0.2']
 _LOGGER = logging.getLogger(__name__)
 
 
+CONF_USER_KEY = 'user_key'
+
 PLATFORM_SCHEMA = cv.PLATFORM_SCHEMA.extend({
-    vol.Required('user_key'): cv.string,
+    vol.Required(CONF_USER_KEY): cv.string,
     vol.Required(CONF_API_KEY): cv.string,
 })
 
@@ -30,7 +32,7 @@ def get_service(hass, config):
     from pushover import InitError
 
     try:
-        return PushoverNotificationService(config['user_key'],
+        return PushoverNotificationService(config[CONF_USER_KEY],
                                            config[CONF_API_KEY])
     except InitError:
         _LOGGER.error(
@@ -59,13 +61,18 @@ class PushoverNotificationService(BaseNotificationService):
 
         data['title'] = kwargs.get(ATTR_TITLE, ATTR_TITLE_DEFAULT)
 
-        target = kwargs.get(ATTR_TARGET)
-        if target is not None:
-            data['device'] = target
+        targets = kwargs.get(ATTR_TARGET)
 
-        try:
-            self.pushover.send_message(message, **data)
-        except ValueError as val_err:
-            _LOGGER.error(str(val_err))
-        except RequestError:
-            _LOGGER.exception('Could not send pushover notification')
+        if not isinstance(targets, list):
+            targets = [targets]
+
+        for target in targets:
+            if target is not None:
+                data['device'] = target
+
+            try:
+                self.pushover.send_message(message, **data)
+            except ValueError as val_err:
+                _LOGGER.error(str(val_err))
+            except RequestError:
+                _LOGGER.exception('Could not send pushover notification')

@@ -2,10 +2,9 @@
 # pylint: disable=protected-access,too-many-public-methods
 from contextlib import closing
 import json
-import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import requests
 
@@ -61,7 +60,7 @@ class TestAPI(unittest.TestCase):
 
     def tearDown(self):
         """Stop everything that was started."""
-        hass.pool.block_till_done()
+        hass.block_till_done()
 
     def test_api_list_state_entities(self):
         """Test if the debug interface allows us to list state entities."""
@@ -139,19 +138,20 @@ class TestAPI(unittest.TestCase):
         hass.states.set("test.test", "not_to_be_set")
 
         events = []
-        hass.bus.listen(const.EVENT_STATE_CHANGED, events.append)
+        hass.bus.listen(const.EVENT_STATE_CHANGED,
+                        lambda ev: events.append(ev))
 
         requests.post(_url(const.URL_API_STATES_ENTITY.format("test.test")),
                       data=json.dumps({"state": "not_to_be_set"}),
                       headers=HA_HEADERS)
-        hass.bus._pool.block_till_done()
+        hass.block_till_done()
         self.assertEqual(0, len(events))
 
         requests.post(_url(const.URL_API_STATES_ENTITY.format("test.test")),
                       data=json.dumps({"state": "not_to_be_set",
                                        "force_update": True}),
                       headers=HA_HEADERS)
-        hass.bus._pool.block_till_done()
+        hass.block_till_done()
         self.assertEqual(1, len(events))
 
     # pylint: disable=invalid-name
@@ -169,7 +169,7 @@ class TestAPI(unittest.TestCase):
             _url(const.URL_API_EVENTS_EVENT.format("test.event_no_data")),
             headers=HA_HEADERS)
 
-        hass.pool.block_till_done()
+        hass.block_till_done()
 
         self.assertEqual(1, len(test_value))
 
@@ -193,7 +193,7 @@ class TestAPI(unittest.TestCase):
             data=json.dumps({"test": 1}),
             headers=HA_HEADERS)
 
-        hass.pool.block_till_done()
+        hass.block_till_done()
 
         self.assertEqual(1, len(test_value))
 
@@ -213,7 +213,7 @@ class TestAPI(unittest.TestCase):
             data=json.dumps('not an object'),
             headers=HA_HEADERS)
 
-        hass.pool.block_till_done()
+        hass.block_till_done()
 
         self.assertEqual(400, req.status_code)
         self.assertEqual(0, len(test_value))
@@ -224,7 +224,7 @@ class TestAPI(unittest.TestCase):
             data=json.dumps([1, 2, 3]),
             headers=HA_HEADERS)
 
-        hass.pool.block_till_done()
+        hass.block_till_done()
 
         self.assertEqual(400, req.status_code)
         self.assertEqual(0, len(test_value))
@@ -243,15 +243,20 @@ class TestAPI(unittest.TestCase):
 
     def test_api_get_error_log(self):
         """Test the return of the error log."""
-        test_content = 'Test String°'
-        with tempfile.NamedTemporaryFile() as log:
-            log.write(test_content.encode('utf-8'))
-            log.flush()
+        test_string = 'Test String°'.encode('UTF-8')
 
-            with patch.object(hass.config, 'path', return_value=log.name):
-                req = requests.get(_url(const.URL_API_ERROR_LOG),
-                                   headers=HA_HEADERS)
-            self.assertEqual(test_content, req.text)
+        # Can't use read_data with wsgiserver in Python 3.4.2. Due to a
+        # bug in read_data, it can't handle byte types ('Type str doesn't
+        # support the buffer API'), but wsgiserver requires byte types
+        # ('WSGI Applications must yield bytes'). So just mock our own
+        # read method.
+        m_open = Mock(return_value=Mock(
+            read=Mock(side_effect=[test_string]))
+        )
+        with patch('homeassistant.components.http.open', m_open, create=True):
+            req = requests.get(_url(const.URL_API_ERROR_LOG),
+                               headers=HA_HEADERS)
+            self.assertEqual(test_string, req.text.encode('UTF-8'))
             self.assertIsNone(req.headers.get('expires'))
 
     def test_api_get_event_listeners(self):
@@ -294,7 +299,7 @@ class TestAPI(unittest.TestCase):
                 "test_domain", "test_service")),
             headers=HA_HEADERS)
 
-        hass.pool.block_till_done()
+        hass.block_till_done()
 
         self.assertEqual(1, len(test_value))
 
@@ -318,7 +323,7 @@ class TestAPI(unittest.TestCase):
             data=json.dumps({"test": 1}),
             headers=HA_HEADERS)
 
-        hass.pool.block_till_done()
+        hass.block_till_done()
 
         self.assertEqual(1, len(test_value))
 

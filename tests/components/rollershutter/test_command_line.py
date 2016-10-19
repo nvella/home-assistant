@@ -5,10 +5,11 @@ import tempfile
 import unittest
 from unittest import mock
 
-import homeassistant.core as ha
+from homeassistant.bootstrap import setup_component
 import homeassistant.components.rollershutter as rollershutter
 from homeassistant.components.rollershutter import (
     command_line as cmd_rs)
+from tests.common import get_test_home_assistant
 
 
 class TestCommandRollerShutter(unittest.TestCase):
@@ -16,7 +17,7 @@ class TestCommandRollerShutter(unittest.TestCase):
 
     def setup_method(self, method):
         """Setup things to be run when tests are started."""
-        self.hass = ha.HomeAssistant()
+        self.hass = get_test_home_assistant()
         self.hass.config.latitude = 32.87336
         self.hass.config.longitude = 117.22743
         self.rs = cmd_rs.CommandRollershutter(self.hass, 'foo',
@@ -40,7 +41,10 @@ class TestCommandRollerShutter(unittest.TestCase):
             mock_run.return_value = b' foo bar '
             result = self.rs._query_state_value('runme')
             self.assertEqual('foo bar', result)
-            mock_run.assert_called_once_with('runme', shell=True)
+            self.assertEqual(mock_run.call_count, 1)
+            self.assertEqual(
+                mock_run.call_args, mock.call('runme', shell=True)
+            )
 
     def test_state_value(self):
         """Test with state value."""
@@ -53,7 +57,7 @@ class TestCommandRollerShutter(unittest.TestCase):
                 'stopcmd': 'echo 0 > {}'.format(path),
                 'value_template': '{{ value }}'
             }
-            self.assertTrue(rollershutter.setup(self.hass, {
+            self.assertTrue(setup_component(self.hass, rollershutter.DOMAIN, {
                 'rollershutter': {
                     'platform': 'command_line',
                     'rollershutters': {
@@ -66,19 +70,19 @@ class TestCommandRollerShutter(unittest.TestCase):
             self.assertEqual('unknown', state.state)
 
             rollershutter.move_up(self.hass, 'rollershutter.test')
-            self.hass.pool.block_till_done()
+            self.hass.block_till_done()
 
             state = self.hass.states.get('rollershutter.test')
             self.assertEqual('open', state.state)
 
             rollershutter.move_down(self.hass, 'rollershutter.test')
-            self.hass.pool.block_till_done()
+            self.hass.block_till_done()
 
             state = self.hass.states.get('rollershutter.test')
             self.assertEqual('open', state.state)
 
             rollershutter.stop(self.hass, 'rollershutter.test')
-            self.hass.pool.block_till_done()
+            self.hass.block_till_done()
 
             state = self.hass.states.get('rollershutter.test')
             self.assertEqual('closed', state.state)
